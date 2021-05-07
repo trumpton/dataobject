@@ -41,12 +41,29 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
+#include <stdarg.h>
 
 
 #include "dataobject_private.h"
 #include "../dataobject.h"
 
 // Local Functions
+
+#define _do_genvpf(format, buf) \
+  { \
+    va_list args ; \
+    va_start(args,format) ; \
+    size_t len=vsnprintf(buf, 0, format, args) ; \
+    buf=malloc(len+1) ; \
+    if (buf) { \
+      va_start(args,format) ; \
+      vsnprintf(buf, len+1, format, args) ; \
+    } \
+  }
+
+#define _do_freevpf(buf) \
+  if (buf) { free(buf) ; buf=NULL ; }
+
 
 
 ///////////////////////////////////////////////////////////
@@ -67,6 +84,84 @@ IDATAOBJECT *donew()
 
   return dh ;
 }
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Creates a data object
+// @param(in) root Object to clone or NULL
+// @return pointer to DATAOBJECT, or NULL on error (errno set)
+//
+
+int _do_copynode(IDATAOBJECT *src, IDATAOBJECT *dst)
+{
+  if (!src || !dst) return 0 ;
+  IDATAOBJECT *s=src, *d=dst ;
+  
+  do {
+
+    // Recurse
+
+    if (s->child) {
+      d->child = donew() ;
+      _do_copynode(s->child, d->child) ;
+    }
+
+    // Copy label
+
+    if (s->label) {
+      d->label = malloc(strlen(s->label)+1) ;
+      if (!d->label) goto fail ;
+      strcpy(d->label, s->label) ;
+    }
+
+    // Copy ints
+
+    d->type = s->type ;
+    d->isarray = s->isarray ;
+    d->d1 = s->d1 ;
+
+    // Copy string buffer data
+
+    if (s->d2 && s->d1 > 0) {
+      d->d2 = malloc(s->d1) ;
+      if (!d->d2) goto fail ;
+      memcpy(d->d2, s->d2, s->d1) ;
+    }
+
+    // Skip to next entry
+
+    if (s->next) {
+      d->next = donew() ;
+      d = d->next ;
+      if (!d) goto fail ;
+    }
+
+    s = s->next ;
+
+  } while (s) ;
+
+  return 1 ;
+
+fail:
+  return 0 ;
+}
+
+DATAOBJECT *donewfrom(IDATAOBJECT *root) 
+{
+  IDATAOBJECT *dh = donew() ;
+  if (!root || !dh) return dh ;
+
+  if (_do_copynode(root, dh)) {
+    return dh ;
+  } else {
+    dodelete(dh) ;
+    return NULL ;
+  }
+  
+}
+
+
 
 
 ///////////////////////////////////////////////////////////
@@ -155,36 +250,6 @@ int dodelete(IDATAOBJECT *dh)
 }
 
 
-
-///////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////
-//
-// @brief Get pointer to sub-object within root structure
-// @param(in) root IDATAOBJECT handle
-// @param(in) path Path to item
-// @param(in) expandprotobuf If true, do_protobuf elements are expanded
-// @param(in) forcecreate If true and node does not exist, it is automatically created
-// @return Pointer to data object or NULL if not found
-//
-
-// Return a node or record - do not auto create
-
-IDATAOBJECT *dogetchild(IDATAOBJECT *root, char *path)
-{
-  IDATAOBJECT *result = _do_search(root, path, 0) ;
-  if (result) return result->child ;
-  else return NULL ;
-}
-
-// Return a record
-
-IDATAOBJECT *dosearchrecord(IDATAOBJECT *root, char *path)
-{
-  IDATAOBJECT *result = _do_search(root, path, 0) ;
-  if (!result || result->type==do_node) return NULL ;
-  else return result ;
-}
-
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
@@ -193,9 +258,13 @@ IDATAOBJECT *dosearchrecord(IDATAOBJECT *root, char *path)
 // @param(in) path Path in dh to get
 // @return handle of the node
 
-IDATAOBJECT * dogetnode(IDATAOBJECT *dh, char *path)
+IDATAOBJECT * dogetnode(IDATAOBJECT *dh, char *path, ...)
 {
-  return _do_search(dh, path, 1) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+  IDATAOBJECT *r=_do_search(dh, 1, vpath) ;
+  _do_freevpf(vpath) ;
+  return r ;
 }
 
 
@@ -207,9 +276,35 @@ IDATAOBJECT * dogetnode(IDATAOBJECT *dh, char *path)
 // @param(in) path Path in dh to get
 // @return handle of the node
 
-IDATAOBJECT * dofindnode(IDATAOBJECT *dh, char *path)
+IDATAOBJECT * dofindnode(IDATAOBJECT *dh, char *path, ...)
 {
-  return _do_search(dh, path, 0) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+  IDATAOBJECT *r=_do_search(dh, 0, vpath) ;
+  _do_freevpf(vpath) ;
+  return r ;
+}
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Get handle of the nth node
+// @param(in) root DATAOBJECT handle
+// @param(in) n Count of node
+// @return Pointer to node itself or NULL if not found
+//
+
+DATAOBJECT * donoden(DATAOBJECT *root, int n) 
+{
+  DATAOBJECT *p = root ;
+
+  while (p && n>0) {
+    p=p->next ;
+    n-- ;
+  }
+
+  return p ;
 }
 
 ///////////////////////////////////////////////////////////
@@ -217,7 +312,7 @@ IDATAOBJECT * dofindnode(IDATAOBJECT *dh, char *path)
 //
 // @brief Gets the handle of a node's child
 // @param(in) dh DATAOBJECT handler
-// @return handle of new node created
+// @return handle of new node's child
 
 IDATAOBJECT * dochild(DATAOBJECT *dh) 
 {
@@ -226,37 +321,73 @@ IDATAOBJECT * dochild(DATAOBJECT *dh)
 }
 
 
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Gets the dataobject label
+// @param(in) dh IDATAOBJECT handle
+// @return Pointer to node label
+//
 
-IDATAOBJECT *_do_search(IDATAOBJECT *root, char *path, int forcecreate)
+char * donodelabel(IDATAOBJECT *dh)
+{
+  if (!dh) return NULL ;
+  return dh->label ;
+}
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Gets the dataobject contents
+// @param(in) dh IDATAOBJECT handle
+// @param(out) len Pointer to location to store length or NULL
+// @return Pointer to node contents
+//
+
+char * donodedata(IDATAOBJECT *dh, int *len)
+{
+  if (!dh) return NULL ;
+  if (len) (*len) = dh->d1 ;
+  return dh->d2 ;
+}
+
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// Internal search function
+//
+
+IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path)
 {
 
   if (!root || !path) return NULL ;
 
   IDATAOBJECT *nh = root ;
 
-  while (*path=='/') path++ ;
+  char *p = path ;
+
+  // Skip leading slashes
+
+  while (*p=='/') p++ ;
 
   do {
 
-    if ( ( *path!='\0' &&  nh->label &&  _do_strtcmp(path, nh->label, '/') ) ||
-         ( *path!='\0' && !nh->label ) ||
-         ( *path=='+' && isdigit(nh->label[0]) && nh->next==NULL ) ) {
+    // If the current label in the path matches this entry
+    // Or search is for + and the entry is the last numerical (append array)
 
-      // Use first entry
+    if ( ( *p!='\0' &&  nh->label && _do_strtcmp(p, nh->label, '/') ) ||
+         ( *p=='+' && isdigit(nh->label[0]) && nh->next==NULL ) ) {
 
-      if (!nh->label) {
-        int p ;
-        for (p=0; path[p]!='\0' && path[p]!='/'; p++) ;
-        nh->label=malloc(p+1) ;
-        strncpy(nh->label, path, p) ; nh->label[p]='\0' ;
-      }
-      
-      // Match found
+      // Found a match
+      // Skip along path to next entry
 
-      path += strlen(nh->label) ;
-      while (*path=='/') path++ ;
+      p += strlen(nh->label) ;
+      while (*p=='/') p++ ;
 
-      if (*path=='\0') {
+      if (*p=='\0') {
 
         // At the end of the path
         return nh ;
@@ -280,29 +411,37 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, char *path, int forcecreate)
       nh=nh->next ;
       //entrynum++ ;
 
-    } else if (forcecreate && *path!='\0') {
+    } else if (forcecreate && *p!='\0') {
 
       // Match not found at end of chain, so attach
       // hierarchy to the end of the chain
 
-      nh->next = donew() ;
-      if (!nh->next) goto fail ;
-      nh = nh->next ;
+      if (nh->label) {
 
-      while (*path!='\0') {
+        // Create new entry (unless the do structure
+        // is empty, and in that case, just use the 
+        // first one
+
+        nh->next = donew() ;
+        if (!nh->next) goto fail ;
+        nh = nh->next ;
+
+      }
+
+      while (*p!='\0') {
 
         int l ;
-        for (l=0; path[l]!='\0' && path[l]!='/'; l++) ;
+        for (l=0; p[l]!='\0' && p[l]!='/'; l++) ;
 
         nh->label = malloc(l+1) ;
         if (!nh->label) goto fail ;
-        strncpy(nh->label, path, l) ; nh->label[l]='\0' ; 
+        strncpy(nh->label, p, l) ; nh->label[l]='\0' ; 
 
         nh->type = do_node ;
-        path += l ;
-        while (*path=='/') path++ ;
+        p += l ;
+        while (*p=='/') p++ ;
 
-        if (*path!='\0') {
+        if (*p!='\0') {
           nh->child = donew() ;
           if (!nh->child) goto fail ;
           nh = nh->child ;
@@ -318,11 +457,12 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, char *path, int forcecreate)
     }
 
 
-  } while (*path!='\0') ;
+  } while (*p!='\0') ;
 
   return nh ;
 
 fail:
+
   return NULL ;
 
 }
@@ -339,7 +479,7 @@ fail:
 
 int dorenamenode(IDATAOBJECT *dh, char *path, char *newname) 
 {
-  IDATAOBJECT *node = dofindnode(dh, path) ;
+  IDATAOBJECT *node = _do_search(dh, 0, path) ;
   
   if (!node) return 0 ;
   if (strstr(newname, "/")!=NULL) {
@@ -355,125 +495,6 @@ int dorenamenode(IDATAOBJECT *dh, char *path, char *newname)
 }
 
 
-
-///////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////
-//
-// @brief Paste a copy of the object into root structure
-// @param(in) root IDATAOBJECT handle for destination
-// @param(in) path Path from root to store pasteptr
-// @param(in) pasteptr pointer to IDATAOBJECT to paste into root
-// @param(in) merge If true, merge data where possible
-// @return True on success
-//
-int _do_pastecopy(IDATAOBJECT *dest, IDATAOBJECT *rootdest, IDATAOBJECT *src, int level) ;
-
-int dopastecopy(IDATAOBJECT *root, char *path, IDATAOBJECT *pasteptr, int merge)
-{
-  if (!root || !path || !pasteptr) return 0 ;
-
-  // Search path
-
-  IDATAOBJECT *s1 = dogetnode(root, path) ;
-
-  if (!merge && s1->child) { 
-
-    // Found and merge not requested, purge tree
-    doclear(s1->child) ;
-
-  } 
-
-  // Paste tree
-  return _do_pastecopy(s1, s1, pasteptr, 0) ;  
-
-}
-
-
-int _do_pastecopy(IDATAOBJECT *dest, IDATAOBJECT *rootdest, IDATAOBJECT *src, int level)
-{
-
-  if (!dest || !src) return 0 ;
-
-  IDATAOBJECT *d=dest, *s=src ;
-
-  while (s && s->label) {
-
-    IDATAOBJECT *d = dest ;
-
-    // Search for matching entry
-
-    int found=0 ;
-    do {
-      if (d->label && strcmp(d->label, s->label)==0) {
-        found=1 ;
-      } else if (d->next) {
-        d = d->next ;
-      }
-    } while ( d->next && !found  ) ;
-
-    // Trap attempts to copy self
-
-    if (s == rootdest && level != 0 ) { return 1 ; }
-
-    // Create blank entry if none found
-
-    if (!found && d->label) {
-      d->next = donew() ;
-      if (!d->next) goto fail ;
-      d=d->next ;
-    }
-
-    // Create and copy label if not found
-
-    if (!d->label) {
-      d->label = malloc(strlen(s->label)+1) ;
-      if (!d->label) goto fail ;
-      strcpy(d->label, s->label) ;
-    }
-
-    // Copy d1
-
-
-    d->d1 = s->d1 ;
-
-    // Copy data / d2
-
-    if (s->d2) {
-      d->d2 = malloc(d->d1) ;
-      if (!d->d2) goto fail ;
-      memcpy(d->d2, s->d2, d->d1) ;
-    }
-
-    // Copy type
-
-    d->type = s->type ;
-
-    // Recurse to child
-
-    if (s->child) {
-      if (d->child) {
-      } else {
-        d->child = donew() ;
-        if (!d->child) goto fail ;
-      }
-      _do_pastecopy(d->child, rootdest, s->child, level+1) ;
-    }
-
-    // Skip to next one
-
-    s = s->next ;
-  }
-
-  return 1 ;
-
-fail:
-
-  doclear(dest) ;
-  return 0 ;
-  
-}
-
-
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
@@ -485,7 +506,7 @@ fail:
 // @return True on success
 //
 
-int dosetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int data, char *path)
+int dosetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int data, char *path, ...)
 {
   if (!dh) {
     fprintf(stderr, "dosetuint: called with NULL handle\n") ;
@@ -495,7 +516,11 @@ int dosetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int data
   assert (type==do_uint32 || type==do_uint64 || type==do_bool || type==do_enum ||
       type==do_64bit || type==do_fixed64 || type==do_32bit || type==do_fixed32) ;
 
-  return _do_set(dh, type, data, NULL, 0, path) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+  int r=_do_set(dh, type, data, NULL, 0, vpath) ;
+  _do_freevpf(vpath) ;
+  return r ;
 }
 
 
@@ -510,7 +535,7 @@ int dosetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int data
 // @return True on success
 //
 
-int dosetsint(IDATAOBJECT *dh, enum dataobject_type type, signed long int data, char *path)
+int dosetsint(IDATAOBJECT *dh, enum dataobject_type type, signed long int data, char *path, ...)
 {
   if (!dh) {
     fprintf(stderr, "dosetsint: called with NULL handle\n") ;
@@ -521,19 +546,21 @@ int dosetsint(IDATAOBJECT *dh, enum dataobject_type type, signed long int data, 
 
   unsigned long int udata ;
   int r ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
 
   switch(type) {
 
   case do_sint32:
   case do_sfixed32:
 
-    r = _do_set(dh, type, _do_signedencode(data), NULL, 0, path) ;
+    r = _do_set(dh, type, _do_signedencode(data), NULL, 0, vpath) ;
     break ;
 
   case do_sint64:
   case do_sfixed64:
 
-    r = _do_set(dh, type, _do_signedencode(data), NULL, 0, path) ;
+    r = _do_set(dh, type, _do_signedencode(data), NULL, 0, vpath) ;
     break ;
 
   default:
@@ -543,6 +570,7 @@ int dosetsint(IDATAOBJECT *dh, enum dataobject_type type, signed long int data, 
 
   }
 
+  _do_freevpf(vpath) ;
   return r ;
 }
 
@@ -559,7 +587,7 @@ int dosetsint(IDATAOBJECT *dh, enum dataobject_type type, signed long int data, 
 // @return True on success
 //
 
-int dosetdata(IDATAOBJECT *dh, enum dataobject_type type, char *data, int datalen, char *path)
+int dosetdata(IDATAOBJECT *dh, enum dataobject_type type, char *data, int datalen, char *path, ...)
 {
   if (!dh) {
     fprintf(stderr, "dosetdata: called with NULL handle\n") ;
@@ -567,7 +595,14 @@ int dosetdata(IDATAOBJECT *dh, enum dataobject_type type, char *data, int datale
   }
   assert(path) ;
   assert(type==do_string || type==do_data) ;
-  return _do_set(dh, type, 0, data, datalen, path) ;
+
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+
+  int r=_do_set(dh, type, 0, data, datalen, vpath) ;
+
+  _do_freevpf(vpath) ;
+  return r ;
 }
 
 
@@ -582,25 +617,32 @@ int dosetdata(IDATAOBJECT *dh, enum dataobject_type type, char *data, int datale
 // @return True on success
 //
 
-int dosettreal(IDATAOBJECT *dh, enum dataobject_type type, double data, char *path) 
+int dosetreal(IDATAOBJECT *dh, enum dataobject_type type, double data, char *path, ...) 
 {
   if (!dh) {
     fprintf(stderr, "dosetdouble: called with NULL handle\n") ;
     return 0 ;
   }
   assert(path) ;
+
+  int r=0 ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+
   switch (type) {
   case do_float:
-    return _do_set(dh, type, _do_floatencode(data), NULL, 1, path) ;
+    r=_do_set(dh, type, _do_floatencode(data), NULL, 1, vpath) ;
     break ;
   case do_double:
-    return _do_set(dh, type, _do_doubleencode(data), NULL, 1, path) ;
+    r=_do_set(dh, type, _do_doubleencode(data), NULL, 1, vpath) ;
     break ;
   default:
     assert(!type) ;
     break ;
   }
 
+  _do_freevpf(vpath) ;
+  return r ;
 }
 
 ///////////////////////////////////////////////////////////
@@ -613,10 +655,13 @@ int dosettreal(IDATAOBJECT *dh, enum dataobject_type type, double data, char *pa
 // @return True on success
 //
 
-int dosettype(IDATAOBJECT *dh, enum dataobject_type type, char *path) 
+int dosettype(IDATAOBJECT *dh, enum dataobject_type type, char *path, ...) 
 {
 
-  IDATAOBJECT *node = dofindnode(dh, path) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+  IDATAOBJECT *node = _do_search(dh, 0, vpath) ;
+  _do_freevpf(vpath) ;
 
   if (!node) return 0 ;
   if (node->child) return 0 ;
@@ -640,7 +685,6 @@ int dosettype(IDATAOBJECT *dh, enum dataobject_type type, char *path)
 }
 
 
-
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
@@ -652,10 +696,17 @@ int dosettype(IDATAOBJECT *dh, enum dataobject_type type, char *path)
 // @return True on success
 //
 
-int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, char *path)
+int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, char *path, ...)
 {
-  IDATAOBJECT *node = dofindnode(dh, path) ;
+
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+
+  IDATAOBJECT *node = _do_search(dh, 0, vpath) ;
+  _do_freevpf(vpath) ;
+
   if (!node) return 0 ;
+
 
   switch (node->type) {
   case do_64bit:
@@ -733,9 +784,15 @@ int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, 
 // @return True on success
 //
 
-long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, char *path)
+long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, char *path, ...)
 {
-  IDATAOBJECT *node = dofindnode(dh, path) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+
+  IDATAOBJECT *node = _do_search(dh, 0, vpath) ;
+
+  _do_freevpf(vpath) ;
+
   if (!node) return 0 ;
 
   switch (node->type) {
@@ -808,9 +865,15 @@ long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, cha
 // @return Pointer to data or NULL on error or not found
 //
 
-char * dogetdata(IDATAOBJECT *dh, enum dataobject_type type, int *datalen, char *path) 
+char * dogetdata(IDATAOBJECT *dh, enum dataobject_type type, int *datalen, char *path, ...) 
 {
-  IDATAOBJECT *h = _do_search(dh, path, 0) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+
+  IDATAOBJECT *h = _do_search(dh, 0, vpath) ;
+
+  _do_freevpf(vpath) ;
+
   if (!h) return NULL ;
   if (datalen) (*datalen) = h->d1 ;
   return h->d2 ;
@@ -828,9 +891,15 @@ char * dogetdata(IDATAOBJECT *dh, enum dataobject_type type, int *datalen, char 
 // @return True on success
 //
 
-int dogetreal(IDATAOBJECT *dh, enum dataobject_type type, double *data, char *path)
+int dogetreal(IDATAOBJECT *dh, enum dataobject_type type, double *data, char *path, ...)
 {
-  IDATAOBJECT *node = dofindnode(dh, path) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+
+  IDATAOBJECT *node = _do_search(dh, 0, vpath) ;
+
+  _do_freevpf(vpath) ;
+
   if (!node) return 0 ;
 
   switch (node->type) {
@@ -897,9 +966,15 @@ int dogetreal(IDATAOBJECT *dh, enum dataobject_type type, double *data, char *pa
 // @return Record type
 //
 
-enum dataobject_type dogettype(IDATAOBJECT *dh, char *path)
+enum dataobject_type dogettype(IDATAOBJECT *dh, char *path, ...)
 {
-  IDATAOBJECT *node = dofindnode(dh, path) ;
+  char *vpath ;
+  _do_genvpf(path, vpath) ;
+
+  IDATAOBJECT *node = _do_search(dh, 0, path) ;
+
+  _do_freevpf(vpath) ;
+
   if (!node) return 0 ;
 
   return node->type ;

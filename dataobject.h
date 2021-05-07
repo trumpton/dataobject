@@ -126,6 +126,17 @@ enum dataobject_type {
 DATAOBJECT *donew() ;
 
 
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Creates a data object
+// @param(in) root Object to clone or NULL
+// @return pointer to DATAOBJECT, or NULL on error (errno set)
+//
+
+DATAOBJECT *donewfrom(DATAOBJECT *root) ;
+
+
 
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
@@ -161,7 +172,7 @@ int dodelete(DATAOBJECT *dh) ;
 // @return True on success
 //
 
-int dosetuint(DATAOBJECT *dh, enum dataobject_type type, unsigned long int data, char *path) ;
+int dosetuint(DATAOBJECT *dh, enum dataobject_type type, unsigned long int data, char *path, ...) ;
 
 
 
@@ -176,7 +187,7 @@ int dosetuint(DATAOBJECT *dh, enum dataobject_type type, unsigned long int data,
 // @return True on success
 //
 
-int dosetsint(DATAOBJECT *dh, enum dataobject_type type, signed long int data, char *path) ;
+int dosetsint(DATAOBJECT *dh, enum dataobject_type type, signed long int data, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -191,7 +202,7 @@ int dosetsint(DATAOBJECT *dh, enum dataobject_type type, signed long int data, c
 // @return True on success
 //
 
-int dosetdata(DATAOBJECT *dh, enum dataobject_type type, char *data, int datalen, char *path) ;
+int dosetdata(DATAOBJECT *dh, enum dataobject_type type, char *data, int datalen, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -205,7 +216,7 @@ int dosetdata(DATAOBJECT *dh, enum dataobject_type type, char *data, int datalen
 // @return True on success
 //
 
-int dosetreal(DATAOBJECT *dh, enum dataobject_type type, double data, char *path) ;
+int dosetreal(DATAOBJECT *dh, enum dataobject_type type, double data, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -218,7 +229,7 @@ int dosetreal(DATAOBJECT *dh, enum dataobject_type type, double data, char *path
 // @return True on success
 //
 
-int dosettype(DATAOBJECT *dh, enum dataobject_type type, char *path) ;
+int dosettype(DATAOBJECT *dh, enum dataobject_type type, char *path, ...) ;
 
 
 
@@ -233,7 +244,7 @@ int dosettype(DATAOBJECT *dh, enum dataobject_type type, char *path) ;
 // @return True on success
 //
 
-int dogetuint(DATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, char *path) ;
+int dogetuint(DATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, char *path, ...) ;
 
 
 
@@ -248,7 +259,7 @@ int dogetuint(DATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, c
 // @return True on success
 //
 
-long int dogetsint(DATAOBJECT *dh, enum dataobject_type type,  long int *n, char *path) ;
+long int dogetsint(DATAOBJECT *dh, enum dataobject_type type,  long int *n, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -263,7 +274,7 @@ long int dogetsint(DATAOBJECT *dh, enum dataobject_type type,  long int *n, char
 // @return Pointer to data or NULL on error or not found
 //
 
-char * dogetdata(DATAOBJECT *dh, enum dataobject_type type, int *datalen, char *path) ;
+char * dogetdata(DATAOBJECT *dh, enum dataobject_type type, int *datalen, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -277,7 +288,7 @@ char * dogetdata(DATAOBJECT *dh, enum dataobject_type type, int *datalen, char *
 // @return True on success
 //
 
-int dogetreal(DATAOBJECT *dh, enum dataobject_type type, double *data, char *path) ;
+int dogetreal(DATAOBJECT *dh, enum dataobject_type type, double *data, char *path, ...) ;
 
 
 
@@ -290,7 +301,7 @@ int dogetreal(DATAOBJECT *dh, enum dataobject_type type, double *data, char *pat
 // @return Record type
 //
 
-enum dataobject_type dogettype(DATAOBJECT *dh, char *path) ;
+enum dataobject_type dogettype(DATAOBJECT *dh, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -313,7 +324,7 @@ int dorenamenode(DATAOBJECT *dh, char *path, char *newname) ;
 // @param(in) path Path in dh to get
 // @return handle of new node created
 
-DATAOBJECT * dogetnode(DATAOBJECT *dh, char *path) ;
+DATAOBJECT * dogetnode(DATAOBJECT *dh, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -325,7 +336,19 @@ DATAOBJECT * dogetnode(DATAOBJECT *dh, char *path) ;
 // @return Pointer to data object or NULL if not found
 //
 
-DATAOBJECT * dofindnode(DATAOBJECT *root, char *path) ;
+DATAOBJECT * dofindnode(DATAOBJECT *root, char *path, ...) ;
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Get handle of the nth node
+// @param(in) root DATAOBJECT handle
+// @param(in) n Count of node
+// @return Pointer to node itself or NULL if not found
+//
+
+DATAOBJECT * donoden(DATAOBJECT *root, int n) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -333,7 +356,7 @@ DATAOBJECT * dofindnode(DATAOBJECT *root, char *path) ;
 //
 // @brief Gets the handle of a node's child
 // @param(in) dh DATAOBJECT handler
-// @return handle of new node created
+// @return handle of node's child
 
 DATAOBJECT * dochild(DATAOBJECT *dh) ;
 
@@ -341,28 +364,25 @@ DATAOBJECT * dochild(DATAOBJECT *dh) ;
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
-// @brief Get pointer to record within root structure
-// @param(in) root DATAOBJECT handle
-// @param(in) path Path to item
-// @return Pointer to data object or NULL if not found
+// @brief Gets the dataobject label
+// @param(in) dh DATAOBJECT handle
+// @return Pointer to node label
 //
 
-DATAOBJECT *dosearchrecord(DATAOBJECT *root, char *path) ;
-
+char * donodelabel(DATAOBJECT *dh) ;
 
 
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
-// @brief Paste a copy of the object into root structure
-// @param(in) root DATAOBJECT handle for destination
-// @param(in) path Path from root to store pasteptr
-// @param(in) pasteptr pointer to DATAOBJECT to paste into root
-// @param(in) merge If true, merge data where possible
-// @return True on success
+// @brief Gets the dataobject contents
+// @param(in) dh DATAOBJECT handle
+// @param(out) len Pointer to location to store length or NULL
+// @return Pointer to node contents
 //
 
-int dopastecopy(DATAOBJECT *root, char *path, DATAOBJECT *pasteptr, int merge) ;
+char * donodedata(DATAOBJECT *dh, int *len) ;
+
 
 
 
@@ -395,7 +415,7 @@ char * doasjson(DATAOBJECT *dh, int *len) ;
 // @return True on success, updates dojsonparsestrerror on failure
 //
 
-int dofromjson(DATAOBJECT *dh, char *json)  ;
+int dofromjson(DATAOBJECT *dh, char *json, ...)  ;
 
 
 ///////////////////////////////////////////////////////////
@@ -407,7 +427,7 @@ int dofromjson(DATAOBJECT *dh, char *json)  ;
 // @return True on success, updates dojsonparsestrerror on failure
 //
 
-int doexpandfromjson(DATAOBJECT *root, char *path) ;
+int doexpandfromjson(DATAOBJECT *root, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -462,7 +482,7 @@ int dofromprotobuf(DATAOBJECT *dh, char *protobuf, int buflen) ;
 // @return True on success
 //
 
-int doexpandfromprotobuf(DATAOBJECT *root, char *path) ;
+int doexpandfromprotobuf(DATAOBJECT *root, char *path, ...) ;
 
 
 //////////////////////////////////////////////////////////////////////////////////////

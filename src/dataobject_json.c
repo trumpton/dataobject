@@ -66,8 +66,9 @@ char * doasjson(IDATAOBJECT *dh, int *len)
 //
 
 
-int dofromjson(IDATAOBJECT *dh, char *json) 
+int dofromjson(IDATAOBJECT *dh, char *json, ...) 
 {
+// TODO: VARARGS
   return _do_fromjson_start(dh, dh, json) ;
 }
 
@@ -82,9 +83,9 @@ int dofromjson(IDATAOBJECT *dh, char *json)
 // @return True on success
 //
 
-int doexpandfromjson(IDATAOBJECT *root, char *path)
+int doexpandfromjson(IDATAOBJECT *root, char *path, ...)
 {
-  IDATAOBJECT *node = dosearchrecord(root, path) ;
+  IDATAOBJECT *node = dofindnode(root, path) ;
   if (!node) return 0 ;
   if (node->child) return 0 ;
   if (node->type!=do_data && node->type!=do_string) return 0 ;

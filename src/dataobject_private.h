@@ -40,7 +40,7 @@ typedef struct IDATAOBJECT {
 
 // dataobject.c functions
 
-IDATAOBJECT *_do_search(IDATAOBJECT *root, char *path, int forcecreate) ;
+IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path) ;
 int _do_set(IDATAOBJECT *dh, int type, unsigned long int ldata, char *data, int datalen, char *path) ;
 int _do_appendtmp(IDATAOBJECT *dh, char *src, int srclen) ;
 int _do_cleartmp(IDATAOBJECT *dh) ;

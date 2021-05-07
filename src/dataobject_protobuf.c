@@ -321,9 +321,9 @@ int dofromprotobuf(IDATAOBJECT *dh, char *protobuf, int buflen)
 // @return True on success
 //
 
-int doexpandfromprotobuf(IDATAOBJECT *root, char *path)
+int doexpandfromprotobuf(IDATAOBJECT *root, char *path, ...)
 {
-  IDATAOBJECT *node = dosearchrecord(root, path) ;
+  IDATAOBJECT *node = dofindnode(root, path) ;
   if (!node) return 0 ;
   if (node->child) return 0 ;
   if (node->type!=do_data && node->type!=do_string) return 0 ;
