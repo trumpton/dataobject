@@ -812,6 +812,11 @@ long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, cha
     return 1 ;
     break ;
 
+  case do_bool:
+    if (node->d1) return 1 ;
+    else return 0 ;
+    break ;
+
   case do_sint32:
   case do_sint64:
   case do_sfixed32:
