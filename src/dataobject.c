@@ -709,6 +709,7 @@ int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, 
 
 
   switch (node->type) {
+
   case do_64bit:
   case do_32bit:
   case do_enum:
@@ -724,6 +725,15 @@ int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, 
     // Return number
 
     (*n) = node->d1 ;
+    return 1 ;
+    break ;
+
+  case do_bool:
+
+    // Return boolean
+
+    if (node->d1) (*n) = 1 ;
+    else (*n) = 0 ;
     return 1 ;
     break ;
 
@@ -752,6 +762,7 @@ int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, 
   case do_double: {
 
     // fetch, round, discard sign and return double
+
     float f = _do_doubledecode(node->d1) ;
     if (f<0) f = -f ;
     (*n) = (unsigned long int)f ;
@@ -762,6 +773,7 @@ int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, 
   default:
 
     // Type not supported
+
     return 0 ;
 
   }
@@ -808,13 +820,18 @@ long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, cha
   case do_fixed64:
 
     // Return number
+
     (*n) = node->d1 ;
     return 1 ;
     break ;
 
   case do_bool:
-    if (node->d1) return 1 ;
-    else return 0 ;
+
+    // Return boolean
+
+    if (node->d1) (*n) = 1 ;
+    else (*n) = 0 ;
+    return 1 ;
     break ;
 
   case do_sint32:
@@ -822,7 +839,8 @@ long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, cha
   case do_sfixed32:
   case do_sfixed64:
 
-    // discard sign and return
+    // Decode sign and return
+
     (*n) = _do_signeddecode(node->d1) ;
     return 1 ;
     break ;
@@ -840,6 +858,7 @@ long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, cha
   case do_double: {
 
     // fetch, round and return double
+
     float f = _do_doubledecode(node->d1) ;
     (*n) = (unsigned long int)f ;
 
@@ -850,6 +869,7 @@ long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, cha
   default:
 
     // Error, unknown type
+
     return 0 ;
   }
 
