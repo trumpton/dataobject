@@ -12,50 +12,74 @@
 int main()
 {
   char EXPECTED[] = "{\"grandparent\":\"{\\\"parent\\\":\\\"{\\\\\\\"child\\\\\\\":\\\\\\\"Message Data\\\\\\\"}\\\"}\"}" ;
+  char csrc[] = "{\"child\":\"Message Data\"}" ;
 
-  char src[] = "{\"child\":\"Message Data\"}" ;
-
-  DATAOBJECT *dh = donew() ;
   DATAOBJECT *dhp = donew() ;
+  DATAOBJECT *dhgp = donew() ;
+  DATAOBJECT *dhn = donew() ;
+
   int pass=1 ;
 
-  dosetdata(dh, do_string, src, strlen(src), "/parent") ;
-  char *pas = doasjson(dh, NULL) ;
+  // Put child source data into parent dhp
+
+  dosetdata(dhp, do_string, csrc, strlen(csrc), "/parent") ;
+
+  // Extract parent data as json string 
+
+  char *pas = doasjson(dhp, NULL) ;
 
   if (!pas) {
-    printf("doasjson failed: %s\n", dojsonparsestrerror(dh)) ;
+
+    printf("1. doasjson failed: %s\n", pas) ;
     pass=0 ;
+
   }
 
   else {
-    dhp = donew() ;
-    dosetdata(dhp, do_string, pas, strlen(pas), "/grandparent") ;
+
+    // Put parent string into dhgp
+
+    dosetdata(dhgp, do_string, pas, strlen(pas), "/grandparent") ;
+
   }
 
-  char *all = doasjson(dhp, NULL) ;
+  char *all = doasjson(dhgp, NULL) ;
+  printf("Generated JSON: %s\n", all) ;
 
   if (!all) {
-    printf("doasjsonfailed: %s\n", dojsonparsestrerror(dhp)) ;
+
+    printf("2. doasjsonfailed: %s\n", dojsonparsestrerror(dhgp)) ;
     pass=0 ;
+
   } else {
 
     if (strcmp(all, EXPECTED)!=0) {
-      printf("output not as expected: %s\n", all) ;
+      printf("3. output not as expected\n") ;
       pass=0 ;
     }
+
+    if (!dofromjson(dhn, all)) {
+
+      printf("4. dofromjson failed: %s\n", dojsonparsestrerror(dhn)) ;
+      pass=0 ;
+
+    }
+
   }
 
-  dodump(dhp, "Embedded String Object") ;
+  dodump(dhgp, "Embedded String Object") ;
   printf("As JSON: %s\n\n", all) ;
 
+  
   if (pass) {
     printf("Test Passed\n") ;
   } else {
     printf("Test FAILED\n") ;
   }
     
-  dodelete(dh) ;
   dodelete(dhp) ;
+  dodelete(dhgp) ;
+  dodelete(dhn) ;
 
   exit(pass) ;
 }

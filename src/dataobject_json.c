@@ -309,7 +309,6 @@ char * _do_asjson_start(IDATAOBJECT *dh, int *len, int isarray)
 int _do_jsonfieldlen(char *str)
 {
   int instring ;
-  int escape=0 ;
   int len=0 ;
   
   if (*str=='\"') {
@@ -327,7 +326,7 @@ int _do_jsonfieldlen(char *str)
 
       done=1 ;
 
-    } else if (!escape && instring && str[len]=='\"') {
+    } else if (instring && str[len]=='\"') {
 
       // Finish string
 
@@ -336,11 +335,13 @@ int _do_jsonfieldlen(char *str)
 
     } else if (instring) {
 
-      // Skip through string
+      // Skip escaped characters
+      if (str[len]=='\\' && str[len+1]!='\0') len++ ;
 
+      // Skip through string
       len++ ;
 
-    } else if ( !escape && !instring && 
+    } else if ( !instring && 
                 ( isalnum(str[len]) || str[len]=='.' || 
                   str[len]=='+' || str[len]=='-' ) ) {
 
@@ -348,22 +349,13 @@ int _do_jsonfieldlen(char *str)
 
       len++ ;
 
-    } else if (escape) {
-
-      // Skip escaped character
-
-      len++ ;
-
     } else {
 
-      // Anthing else is the end!
+      // Anything else is the end!
 
       done=1 ;
 
     }
-
-    escape = (str[len]=='\\') ;
-
 
   } while ( !done ) ;
 
