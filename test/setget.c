@@ -9,7 +9,7 @@
 #include <string.h>
 #include "../dataobject.h"
 
-int main()
+int setget()
 {
   DATAOBJECT *dh = donew() ;
   dodump(dh, "Empty Structure") ;

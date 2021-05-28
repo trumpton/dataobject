@@ -88,6 +88,32 @@ IDATAOBJECT *donew()
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
+// @brief Recurse through data object, calling callback for each element
+// @param do Data object at root
+// @param callback Function to call for each child object
+// @return True on success
+//
+
+int dorecurse(DATAOBJECT *dh, void (*callback)(DATAOBJECT*) ) 
+{
+  DATAOBJECT *n = dh ;
+
+  if (!n || !callback) return 0 ;
+
+  while (n) {
+    callback(n) ;
+    if (n->child) dorecurse(n->child, callback) ;
+    n = n->next ;
+  }
+
+  return 1 ;
+
+}
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
 // @brief Creates a data object
 // @param(in) root Object to clone or NULL
 // @return pointer to DATAOBJECT, or NULL on error (errno set)
@@ -365,8 +391,8 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path)
 
   if (!root || !path) return NULL ;
 
+  int entrynum = 0 ;
   IDATAOBJECT *nh = root ;
-
   char *p = path ;
 
   // Skip leading slashes
@@ -376,16 +402,21 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path)
   do {
 
     // If the current label in the path matches this entry
-    // Or search is for + and the entry is the last numerical (append array)
+    // Or search is for * and the entry is the last numerical (append array)
 
     if ( ( *p!='\0' &&  nh->label && _do_strtcmp(p, nh->label, '/') ) ||
-         ( *p=='+' && isdigit(nh->label[0]) && nh->next==NULL ) ) {
+         ( *p=='*' && isdigit(nh->label[0]) && nh->next==NULL ) ) {
 
-      // Found a match
-      // Skip along path to next entry
+      // Found a match, move to the next level along/down
 
       p += strlen(nh->label) ;
       while (*p=='/') p++ ;
+
+      // Force this entry to be of type array if the next entry is + or *
+
+      if (*p=='+' || *p=='*') {
+        nh->isarray  = 1 ;
+      }
 
       if (*p=='\0') {
 
@@ -409,7 +440,7 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path)
       // Match not found, progress along chain
 
       nh=nh->next ;
-      //entrynum++ ;
+      entrynum++ ;
 
     } else if (forcecreate && *p!='\0') {
 
@@ -425,6 +456,7 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path)
         nh->next = donew() ;
         if (!nh->next) goto fail ;
         nh = nh->next ;
+        entrynum++ ;
 
       }
 
@@ -433,9 +465,25 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path)
         int l ;
         for (l=0; p[l]!='\0' && p[l]!='/'; l++) ;
 
-        nh->label = malloc(l+1) ;
-        if (!nh->label) goto fail ;
-        strncpy(nh->label, p, l) ; nh->label[l]='\0' ; 
+        if (*p=='*' || *p=='+') {
+
+          // Store number for array
+
+          char N[32] ;
+          snprintf(N, 31, "%d", entrynum) ;
+          nh->label = malloc(strlen(N)+1) ;
+          if (!nh->label) goto fail ;
+          strcpy(nh->label, N) ;
+          
+        } else {
+
+          // Store label
+
+          nh->label = malloc(l+1) ;
+          if (!nh->label) goto fail ;
+          strncpy(nh->label, p, l) ; nh->label[l]='\0' ; 
+
+        }
 
         nh->type = do_node ;
         p += l ;
@@ -487,11 +535,16 @@ int dorenamenode(IDATAOBJECT *dh, char *path, char *newname)
     return 0 ;
   }
 
+  char *newlabel = malloc(strlen(newname)+1) ;
+  if (!newlabel) return 0 ;
+
+  strcpy(newlabel, newname) ;
+
   if (node->label) free(node->label) ;
-  node->label = malloc(strlen(newname)+1) ;
-  if (!node->label) return 0 ;
-  strcpy(node->label, newname) ;
+  node->label = newlabel ;
+
   return 1 ;
+
 }
 
 
@@ -594,7 +647,7 @@ int dosetdata(IDATAOBJECT *dh, enum dataobject_type type, char *data, int datale
     return 0 ;
   }
   assert(path) ;
-  assert(type==do_string || type==do_data) ;
+  assert(type==do_string || type==do_data || type==do_unquoted) ;
 
   char *vpath ;
   _do_genvpf(path, vpath) ;
@@ -665,6 +718,7 @@ int dosettype(IDATAOBJECT *dh, enum dataobject_type type, char *path, ...)
 
   if (!node) return 0 ;
   if (node->child) return 0 ;
+  if (node->type==do_unquoted) return 0 ;
 
   // If changing type to data, but no data present, fail
 
@@ -682,6 +736,95 @@ int dosettype(IDATAOBJECT *dh, enum dataobject_type type, char *path, ...)
   }
 
   return 0 ;
+}
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Parse unquoted string
+// @param(in) dh Handle of object to parse
+// @return type or do_unquoted if unable to parse
+//
+
+enum dataobject_type doparseunquoted(IDATAOBJECT *entry)
+{
+  if (!entry) return do_unquoted ;
+  if (entry->type != do_unquoted) return entry->type ;
+  if (!entry->d2) return do_unquoted ;
+
+  char *value = entry->d2 ;
+  
+  if (value[0]=='n' || value[0]=='N') {
+
+    // null string
+    // entry->d1 will be set to 0
+    // entry->d2 will be set to NULL
+    entry->type = do_string ;
+
+  } else if (value[0]=='t' || value[0]=='T') {
+
+    // boolean
+    entry->d1 = 1 ;
+    entry->type = do_bool ;
+
+  } else if (value[0]=='f' || value[0]=='F') {
+
+    // boolean
+    entry->d1 = 0 ;
+    entry->type = do_bool ;
+
+  } else if (isdigit(value[0]) || value[0]=='+' || value[0]=='-' || value[0]=='.') {
+
+    // number
+
+    int isfloat=0 ;
+
+    int l=0 ;
+    while (isdigit(value[l]) || value[l]=='+' || value[l]=='-' || value[l]=='.') { 
+      isfloat |= value[l]=='.' ;
+      l++ ; 
+    }
+
+    if (isfloat) {
+
+      // float 
+
+      double d ;
+      sscanf(value, "%lf", &d) ;
+      entry->d1 = _do_doubleencode(d) ;
+      entry->type = do_double ;
+
+    } else {
+
+      // Signed int
+
+      signed long int j = atoi(value) ;
+      entry->d1 = _do_signedencode(j) ;
+      entry->type = do_sint64 ;
+
+    }
+
+  } else {
+
+    // Invalid character found in string - unable to convert
+    goto fail ;
+
+  }
+
+  if (entry->type!=do_unquoted && entry->d2) {
+
+    free(entry->d2) ;
+    entry->d2=NULL ;
+
+  }
+
+  return entry->type ;
+
+fail:
+
+
+  return do_unquoted ;
+
 }
 
 
@@ -707,6 +850,9 @@ int dogetuint(IDATAOBJECT *dh, enum dataobject_type type, unsigned long int *n, 
 
   if (!node) return 0 ;
 
+  if (node->type==do_unquoted) {
+    doparseunquoted(node) ;
+  }
 
   switch (node->type) {
 
@@ -806,6 +952,10 @@ long int dogetsint(IDATAOBJECT *dh, enum dataobject_type type,  long int *n, cha
   _do_freevpf(vpath) ;
 
   if (!node) return 0 ;
+
+  if (node->type==do_unquoted) {
+    doparseunquoted(node) ;
+  }
 
   switch (node->type) {
 
@@ -927,6 +1077,10 @@ int dogetreal(IDATAOBJECT *dh, enum dataobject_type type, double *data, char *pa
 
   if (!node) return 0 ;
 
+  if (node->type==do_unquoted) {
+    doparseunquoted(node) ;
+  }
+
   switch (node->type) {
 
   case do_64bit:
@@ -1024,7 +1178,6 @@ enum dataobject_type dogettype(IDATAOBJECT *dh, char *path, ...)
 // @param(in) ldata Unsigned long data
 // @param(in) data String data (or NULL)
 // @param(in) datalen Length of String data
-// @param(in) fdata Float data
 // @param(in) path Path at which data is to be stored
 // @return true on success
 //
@@ -1050,19 +1203,26 @@ int _do_set(IDATAOBJECT *dh, int type, unsigned long int ldata, char *data, int 
 
   case do_string:
   case do_data:
-
-    if (h->d2) {
-      free(h->d2) ;
-      h->d2 = NULL ;
-      h->d1 = 0 ;
-    }
+  case do_unquoted:
 
     if (data && datalen>=0) {
-      h->d2 = malloc(datalen + 1) ;
-      if (!h->d2) goto fail ;
-      memcpy(h->d2, data, datalen) ;
-      h->d2[datalen]='\0' ;
+
+      // malloc, copy, then free to enable
+      // copy to self without segfault
+
+      char *newd2 ;
+
+      newd2 = malloc(datalen + 1) ;
+      if (!newd2) goto fail ;
+
+      memcpy(newd2, data, datalen) ;
+      newd2[datalen]='\0' ;
+
       h->d1 = datalen ;
+
+      if (h->d2) { free(h->d2) ; }
+      h->d2 = newd2 ;
+
     }
     break ;
 

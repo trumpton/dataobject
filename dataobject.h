@@ -105,7 +105,7 @@ enum dataobject_type {
   do_64bit, do_fixed64, do_sfixed64, do_double,
   do_string, do_data,
   do_32bit, do_fixed32, do_sfixed32, do_float,
-  do_node, do_unknown
+  do_node, do_unquoted, do_unknown
 } ;
 
 
@@ -124,6 +124,18 @@ enum dataobject_type {
 //
 
 DATAOBJECT *donew() ;
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Recurse through data object, calling callback for each element
+// @param do Data object at root
+// @param callback Function to call for each child object
+// @return True on success
+//
+
+int dorecurse(DATAOBJECT *dh, void (*callback)(DATAOBJECT*) ) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -397,6 +409,16 @@ char * donodedata(DATAOBJECT *dh, int *len) ;
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
+// @brief Test dataobject to identify whether it can return valid json
+// @param[in] dh Data object handle
+// @return true on success, updates dojsonparsestrerror() on failure
+
+int doisvalidjson(DATAOBJECT *dh) ;
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
 // @brief Output data as a JSON string
 // @param[in] dh Data object handle
 // @param[out] len Length of JSON data produced
@@ -421,6 +443,28 @@ int dofromjson(DATAOBJECT *dh, char *json, ...)  ;
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
+// @brief Import data from JSON and places in dh object (donot expand unquoted yet)
+// @param[in] dh Data object handle
+// @param[in] json NULL terminated JSON data
+// @return True on success, updates dojsonparsestrerror on failure
+//
+
+int dofromjsonu(DATAOBJECT *dh, char *json, ...)  ;
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Parse unquoted string
+// @param(in) dh Handle of object to parse
+// @return type or do_unquoted if unable to parse
+//
+
+enum dataobject_type doparseunquoted(DATAOBJECT *entry) ;
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
 // @brief Expands a node containing a json string
 // @param(out) dh Data object handle
 // @param(in) path Path to node
@@ -428,6 +472,18 @@ int dofromjson(DATAOBJECT *dh, char *json, ...)  ;
 //
 
 int doexpandfromjson(DATAOBJECT *root, char *path, ...) ;
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Expands unquoted node containing a json string
+// @param(out) dh Data object handle
+// @param(in) path Path to node
+// @return True on success, updates dojsonparsestrerror on failure
+//
+
+int doexpandfromjsonu(DATAOBJECT *root, char *path, ...) ;
 
 
 ///////////////////////////////////////////////////////////

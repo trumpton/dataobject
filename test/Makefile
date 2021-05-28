@@ -1,12 +1,14 @@
 
-embeddedstring: embeddedstring.c ../ldataobject-dbg.a
-	gcc $^ -o $@
+FILES:= dotest.c parsejson.c embeddedstring.c setget.c
 
-setget: setget.c ../ldataobject-dbg.a
-	gcc $^ -o $@
+dotest: $(FILES) ../ldataobject-dbg.a
+	gcc -g $^ -o $@
+
+rund: dotest
+	gdbgui --args ./dotest
 
 clean:
-	rm -f setget embeddedstring
+	rm -f dotest
 	(cd .. ; make clean)
 
 ../ldataobject-dbg.a:

@@ -72,6 +72,8 @@ char * doasprotobuf(IDATAOBJECT *dh, int *len)
 
       } else {
 
+        if (h->type == do_unquoted) { doparseunquoted(h) ; } 
+
         switch (h->type) {
 
           case do_64bit:
@@ -131,7 +133,8 @@ char * doasprotobuf(IDATAOBJECT *dh, int *len)
 
 
           case do_string:
-          case do_data: {
+          case do_data:
+          case do_unquoted: {
 
             int len ;
 

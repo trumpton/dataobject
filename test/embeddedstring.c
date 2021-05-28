@@ -1,7 +1,7 @@
 //
 // dataobject test
 //
-// setget.c
+// embeddedstring.c
 //
 
 #include <stdlib.h>
@@ -9,7 +9,7 @@
 #include <string.h>
 #include "../dataobject.h"
 
-int main()
+int embeddedstring()
 {
   char EXPECTED[] = "{\"grandparent\":\"{\\\"parent\\\":\\\"{\\\\\\\"child\\\\\\\":\\\\\\\"Message Data\\\\\\\"}\\\"}\"}" ;
   char csrc[] = "{\"child\":\"Message Data\"}" ;

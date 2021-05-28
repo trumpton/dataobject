@@ -5,15 +5,6 @@
 //
 //
 
-// TODO json decide turns an integer of 2 into 4 - sets wrong type or gets wrong type
-// integers should be stored as signed and retrieved as signed
-
-// TODO json 'null' needs to be stored as do_string with a null pointer
-// this needs to be handled in both to and from json
-// Also, the protobuf output needs to handle this too (probably a 0 length)
-// And also the dodump
-
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +20,7 @@
 //
 
 char * _do_asjson_start(IDATAOBJECT *dh, int *len, int isarray) ;
-int _do_fromjson_start(IDATAOBJECT *root, IDATAOBJECT *dh, char *json) ;
+int _do_fromjson_start(IDATAOBJECT *root, IDATAOBJECT *dh, char *json, int fullparse) ;
 
 
 ///////////////////////////////////////////////////////////
@@ -56,6 +47,38 @@ char * doasjson(IDATAOBJECT *dh, int *len)
   return dh->tmpbuf ;
 }
 
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Test dataobject to identify whether it can return valid json
+// @param[in] dh Data object handle
+// @return true on success, updates dojsonparsestrerror() on failure
+
+int doisvalidjson(IDATAOBJECT *dh)
+{
+  if (!dh) return 0 ;
+
+  int ok = 0 ;
+
+  // Convert to JSON text and back
+
+  char *json = doasjson(dh, NULL) ;
+  IDATAOBJECT *ndh = donew() ;
+  ok = dofromjson(ndh, json) ;
+
+  // Copy error status to this object
+
+  if (!ok && ndh->jsonparsestatus) {
+    if (dh->jsonparsestatus) free(dh->jsonparsestatus) ;
+    dh->jsonparsestatus = malloc(strlen(ndh->jsonparsestatus)+1) ;
+    if (dh->jsonparsestatus) strcpy(dh->jsonparsestatus, ndh->jsonparsestatus) ;
+  }
+
+  dodelete(ndh) ;
+
+  return ok ;
+}
+
 
 ///////////////////////////////////////////////////////////
 //
@@ -69,7 +92,23 @@ char * doasjson(IDATAOBJECT *dh, int *len)
 int dofromjson(IDATAOBJECT *dh, char *json, ...) 
 {
 // TODO: VARARGS
-  return _do_fromjson_start(dh, dh, json) ;
+  return _do_fromjson_start(dh, dh, json, 1) ;
+}
+
+
+///////////////////////////////////////////////////////////
+//
+// @brief Import data from JSON and places in dh object
+// @param[in] dh Data object handle
+// @param[in] json NULL terminated JSON data
+// @return True on success, updates dojsonparsestrerror on failure
+//
+
+
+int dofromjsonu(IDATAOBJECT *dh, char *json, ...) 
+{
+// TODO: VARARGS
+  return _do_fromjson_start(dh, dh, json, 0) ;
 }
 
 
@@ -92,7 +131,7 @@ int doexpandfromjson(IDATAOBJECT *root, char *path, ...)
   if (!node->d2) return 0 ;
   node->child = donew() ;
   if (!node->child) return 0 ;
-  if (!_do_fromjson_start(root, node->child, node->d2)) {
+  if (!_do_fromjson_start(root, node->child, node->d2, 1)) {
     dodelete(node->child) ;
     node->child=NULL ;
     return 0 ;
@@ -105,6 +144,37 @@ int doexpandfromjson(IDATAOBJECT *root, char *path, ...)
   }
 }
 
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
+// @brief Expands a node containing a json string - do not expand unquoted
+// @param(out) dh Data object handle
+// @param(in) path Path to node
+// @return True on success
+//
+
+int doexpandfromjsonu(IDATAOBJECT *root, char *path, ...)
+{
+  IDATAOBJECT *node = dofindnode(root, path) ;
+  if (!node) return 0 ;
+  if (node->child) return 0 ;
+  if (node->type!=do_data && node->type!=do_string) return 0 ;
+  if (!node->d2) return 0 ;
+  node->child = donew() ;
+  if (!node->child) return 0 ;
+  if (!_do_fromjson_start(root, node->child, node->d2, 0)) {
+    dodelete(node->child) ;
+    node->child=NULL ;
+    return 0 ;
+  } else {
+    free(node->d2) ;
+    node->d2=NULL ;
+    node->d1=0 ;
+    node->type=do_node ;
+   return 1 ;
+  }
+}
 
 
 ///////////////////////////////////////////////////////////
@@ -192,6 +262,8 @@ char * _do_asjson_start(IDATAOBJECT *dh, int *len, int isarray)
 
       char num[32] ;
 
+      if (h->type == do_unquoted) { doparseunquoted(h) ; } 
+
       switch (h->type) {
 
         case do_64bit:
@@ -215,6 +287,19 @@ char * _do_asjson_start(IDATAOBJECT *dh, int *len, int isarray)
 
           sprintf(num, "%ld", _do_signeddecode(h->d1)) ;
           _do_appendtmp( dh, num, strlen(num) ) ;
+          break ;
+
+        case do_unquoted:
+
+          if (!h->d2) {
+
+            _do_appendtmp(dh, "null",4) ;
+
+          } else {
+
+            _do_appendtmp(dh, h->d2, h->d1) ;
+
+          }
           break ;
 
         case do_string:
@@ -341,11 +426,10 @@ int _do_jsonfieldlen(char *str)
       // Skip through string
       len++ ;
 
-    } else if ( !instring && 
-                ( isalnum(str[len]) || str[len]=='.' || 
-                  str[len]=='+' || str[len]=='-' ) ) {
+    } else if ( !instring &&  str[len]!='\0' && str[len]!=',' && 
+                str[len]!='}' && str[len]!=']' && !isspace(str[len]) ) {
 
-      // Step through text or number
+      // Step through text / number / variable etc.
 
       len++ ;
 
@@ -363,7 +447,8 @@ int _do_jsonfieldlen(char *str)
 }
 
 
-int _do_fromjson(IDATAOBJECT *rootroot, IDATAOBJECT *entryroot, char *json, int *pos, int depth, int isarray) 
+
+int _do_fromjson(IDATAOBJECT *rootroot, IDATAOBJECT *entryroot, char *json, int *pos, int depth, int isarray, int fullparse) 
 {
   enum { PARSEOK, BADCHAR, NOLABEL, ERRMALLOC, 
          ARRAYENDEXPECTED, OBJECTENDEXPECTED, ERRORCHILD} parseerror = PARSEOK ;
@@ -464,7 +549,7 @@ int _do_fromjson(IDATAOBJECT *rootroot, IDATAOBJECT *entryroot, char *json, int 
       entry->child = donew() ;
       entry->isarray = (ch=='[') ;
 
-      _do_fromjson(rootroot, entry->child, json, pos, depth+1, entry->isarray) ;
+      _do_fromjson(rootroot, entry->child, json, pos, depth+1, entry->isarray, fullparse) ;
 
       if (!entry->child->label) {
         // No data was filled in to child
@@ -500,7 +585,7 @@ int _do_fromjson(IDATAOBJECT *rootroot, IDATAOBJECT *entryroot, char *json, int 
 
           entry->d1 = 0 ;
           entry->d2 = malloc(datalen-1) ; // string\0
-          entry->type = do_data ;
+          entry->type = do_string ;
           if (!entry->d2) {
             parseerror = ERRMALLOC ;
             goto fail ;
@@ -512,61 +597,34 @@ int _do_fromjson(IDATAOBJECT *rootroot, IDATAOBJECT *entryroot, char *json, int 
           }
           entry->d2[datalen-2]='\0' ;
 
-        } else if (json[*pos]=='n' || json[*pos]=='N') {
-
-          // null string
-          // entry->d1 remains as 0 ;
-          // entry->d2 remains NULL ;
-          entry->type = do_string ;
-
-
-        } else if (json[*pos]=='t' || json[*pos]=='T') {
-
-          // boolean
-          entry->d1 = 1 ;
-          entry->type = do_bool ;
-
-        } else if (json[*pos]=='f' || json[*pos]=='F') {
-
-          // boolean
-          entry->d1 = 0 ;
-          entry->type = do_bool ;
-
-        } else if (isdigit(json[*pos]) || json[*pos]=='+' || json[*pos]=='-' || json[*pos]=='.') {
-
-          // number
-
-          int isfloat=0 ;
-
-          int l=0 ;
-          while (isdigit(json[(*pos)+l]) || json[(*pos)+l]=='+' || json[(*pos)+l]=='-' || json[(*pos)+l]=='.') { 
-            isfloat |= json[(*pos)+l]=='.' ;
-            l++ ; 
-          }
-
-          if (isfloat) {
-
-            // float 
-
-            double d ;
-            sscanf(&json[(*pos)], "%lf", &d) ;
-            entry->d1 = _do_doubleencode(d) ;
-            entry->type = do_double ;
-
-          } else {
-
-            // Signed int
-
-            signed long int j = atoi(&json[*pos]) ;
-            entry->d1 = _do_signedencode(j) ;
-            entry->type = do_sint64 ;
-
-          }
-
         } else {
 
-          parseerror=BADCHAR ;
-          goto fail ;
+          // non-string -> store blah\0 and length=4
+
+          entry->d1 = 0 ;
+          entry->d2 = malloc(datalen+1) ; // string\0
+          entry->type = do_unquoted ;
+          if (!entry->d2) {
+            parseerror = ERRMALLOC ;
+            goto fail ;
+          }
+          entry->d1 = (datalen) ;
+          if (datalen>0) {
+            // Copy data for non-empty strings
+            strncpy(entry->d2, &(json[(*pos)]), datalen) ;
+          }
+          entry->d2[datalen]='\0' ;
+
+        }
+
+        if (fullparse) {
+
+          if (doparseunquoted(entry) == do_unquoted) {
+
+            parseerror = BADCHAR ;
+            goto fail ;
+
+          }
 
         }
 
@@ -629,8 +687,10 @@ fail:
            (*pos)) ;
 
     strncat(errormessage, &json[(*pos)], 10);
-    rootroot->jsonparsestatus = malloc(strlen(errormessage)+1) ;
     strcat(errormessage, "...") ;
+
+    rootroot->jsonparsestatus = malloc(strlen(errormessage)+1) ;
+
     if (rootroot->jsonparsestatus) {
       strcpy(rootroot->jsonparsestatus, errormessage) ;
     }
@@ -645,7 +705,7 @@ fail:
 }
 
 
-int _do_fromjson_start(IDATAOBJECT *root, IDATAOBJECT *dh, char *json) 
+int _do_fromjson_start(IDATAOBJECT *root, IDATAOBJECT *dh, char *json, int fullparse) 
 {
   if (!dh) return 0 ;
 
@@ -654,8 +714,8 @@ int _do_fromjson_start(IDATAOBJECT *root, IDATAOBJECT *dh, char *json)
   while (isspace(*json)) json++ ;
   char ch = (*json) ;
   if (ch=='{' || ch=='[') {
-    json++ ;
-    _do_fromjson(root, dh, json, &len, 0, (ch=='[') ) ;
+    len=1 ;
+    _do_fromjson(root, dh, json, &len, 0, (ch=='['), fullparse ) ;
   }
 
   return (len>=0) ;

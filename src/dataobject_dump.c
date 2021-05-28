@@ -64,7 +64,8 @@ void _do_dump(IDATAOBJECT *dh, int depth)
       (dh->type) == do_32bit ? "32bit" :
       (dh->type) == do_fixed32 ? "fixed32" :
       (dh->type) == do_sfixed32 ? "sfixed32" :
-      (dh->type) == do_float ? "float" : "????") ;
+      (dh->type) == do_float ? "float" : 
+      (dh->type) == do_unquoted ? "unquoted" : "????") ;
 
     if (!dh->child) {
 
