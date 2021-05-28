@@ -149,10 +149,10 @@ int _do_copynode(IDATAOBJECT *src, IDATAOBJECT *dst)
 
     // Copy string buffer data
 
-    if (s->d2 && s->d1 > 0) {
-      d->d2 = malloc(s->d1) ;
+    if (s->d2 && s->d1 >= 0) {
+      d->d2 = malloc(s->d1+1) ;
       if (!d->d2) goto fail ;
-      memcpy(d->d2, s->d2, s->d1) ;
+      memcpy(d->d2, s->d2, s->d1+1) ;
     }
 
     // Skip to next entry
@@ -350,6 +350,20 @@ IDATAOBJECT * dochild(DATAOBJECT *dh)
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 //
+// @brief Gets the handle of the next node
+// @param(in) dh DATAOBJECT handler
+// @return handle of the next node
+
+IDATAOBJECT * donext(DATAOBJECT *dh) 
+{
+  if (!dh) return NULL ;
+  else return dh->next ;
+}
+
+
+///////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
+//
 // @brief Gets the dataobject label
 // @param(in) dh IDATAOBJECT handle
 // @return Pointer to node label
@@ -398,6 +412,10 @@ IDATAOBJECT *_do_search(IDATAOBJECT *root, int forcecreate, char *path)
   // Skip leading slashes
 
   while (*p=='/') p++ ;
+
+  // Return root object if path empty
+
+  if (*p=='\0') return root ;
 
   do {
 
@@ -1222,6 +1240,14 @@ int _do_set(IDATAOBJECT *dh, int type, unsigned long int ldata, char *data, int 
 
       if (h->d2) { free(h->d2) ; }
       h->d2 = newd2 ;
+
+    } else {
+
+      // Null data, so remove 
+
+      if (h->d2) { free(h->d2) ; }
+      h->d2 = NULL ;
+      h->d1 = 0 ;
 
     }
     break ;
